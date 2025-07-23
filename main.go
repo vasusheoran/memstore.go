@@ -46,6 +46,19 @@ func (s *Storage) Delete(key string) {
 	delete(s.data, key)
 }
 
+// All returns a copy of the underlying map for read-only purposes
+func (s *Storage) All() map[string]interface{} {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	// Create a shallow copy to avoid race conditions
+	copy := make(map[string]interface{}, len(s.data))
+	for k, v := range s.data {
+		copy[k] = v
+	}
+	return copy
+}
+
 func (s *Storage) flushPeriodically() {
 	ticker := time.NewTicker(s.flushPeriod)
 	defer ticker.Stop()

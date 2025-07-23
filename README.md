@@ -36,7 +36,8 @@ package main
 import (
 	"fmt"
 	"time"
-    "github.com/vasusheoran/memstore.go" // Replace with your actual module path
+
+	memstore "github.com/vasusheoran/memstore.go"
 )
 
 func main() {
