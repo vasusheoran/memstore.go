@@ -7,7 +7,15 @@ import (
 	"time"
 )
 
-type Storage struct {
+type Storage interface {
+	Set(key string, value interface{})
+	Get(key string) (interface{}, bool)
+	Delete(key string)
+	All() map[string]interface{}
+	Flush() error
+}
+
+type storage struct {
 	mu          sync.RWMutex
 	data        map[string]interface{}
 	flushPath   string
@@ -15,8 +23,8 @@ type Storage struct {
 	stopChan    chan struct{}
 }
 
-func NewStorage(flushPath string, flushPeriod time.Duration) *Storage {
-	s := &Storage{
+func NewStorage(flushPath string, flushPeriod time.Duration) *storage {
+	s := &storage{
 		data:        make(map[string]interface{}),
 		flushPath:   flushPath,
 		flushPeriod: flushPeriod,
@@ -27,27 +35,27 @@ func NewStorage(flushPath string, flushPeriod time.Duration) *Storage {
 	return s
 }
 
-func (s *Storage) Set(key string, value interface{}) {
+func (s *storage) Set(key string, value interface{}) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.data[key] = value
 }
 
-func (s *Storage) Get(key string) (interface{}, bool) {
+func (s *storage) Get(key string) (interface{}, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	val, ok := s.data[key]
 	return val, ok
 }
 
-func (s *Storage) Delete(key string) {
+func (s *storage) Delete(key string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	delete(s.data, key)
 }
 
 // All returns a copy of the underlying map for read-only purposes
-func (s *Storage) All() map[string]interface{} {
+func (s *storage) All() map[string]interface{} {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -59,21 +67,21 @@ func (s *Storage) All() map[string]interface{} {
 	return copy
 }
 
-func (s *Storage) flushPeriodically() {
+func (s *storage) flushPeriodically() {
 	ticker := time.NewTicker(s.flushPeriod)
 	defer ticker.Stop()
 
 	for {
 		select {
 		case <-ticker.C:
-			_ = s.flushToDisk() // Ignore errors for now
+			_ = s.Flush() // Ignore errors for now
 		case <-s.stopChan:
 			return
 		}
 	}
 }
 
-func (s *Storage) flushToDisk() error {
+func (s *storage) Flush() error {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -87,7 +95,7 @@ func (s *Storage) flushToDisk() error {
 	return encoder.Encode(s.data)
 }
 
-func (s *Storage) loadFromDisk() error {
+func (s *storage) loadFromDisk() error {
 	file, err := os.Open(s.flushPath)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -101,7 +109,7 @@ func (s *Storage) loadFromDisk() error {
 	return decoder.Decode(&s.data)
 }
 
-func (s *Storage) Close() error {
+func (s *storage) Close() error {
 	close(s.stopChan)
-	return s.flushToDisk()
+	return s.Flush()
 }
