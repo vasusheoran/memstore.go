@@ -32,7 +32,11 @@ func NewStorage(flushPath string, flushPeriod time.Duration) Storage {
 		stopChan:    make(chan struct{}),
 	}
 	s.loadFromDisk()
-	go s.flushPeriodically()
+
+	if flushPeriod != 0 {
+		go s.flushPeriodically()
+	}
+
 	return s
 }
 
