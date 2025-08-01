@@ -7,26 +7,26 @@ import (
 	"time"
 )
 
-type Storage interface {
-	Set(key string, value interface{})
-	Get(key string) (interface{}, bool)
+type Storage[T any] interface {
+	Set(key string, value T)
+	Get(key string) (T, bool)
 	Delete(key string)
-	All() map[string]interface{}
+	All() map[string]T
 	Close() error
 	Flush() error
 }
 
-type storage struct {
+type storage[T any] struct {
 	mu          sync.RWMutex
-	data        map[string]interface{}
+	data        map[string]T
 	flushPath   string
 	flushPeriod time.Duration
 	stopChan    chan struct{}
 }
 
-func NewStorage(flushPath string, flushPeriod time.Duration) Storage {
-	s := &storage{
-		data:        make(map[string]interface{}),
+func NewStorage[T any](flushPath string, flushPeriod time.Duration) Storage[T] {
+	s := &storage[T]{
+		data:        make(map[string]T),
 		flushPath:   flushPath,
 		flushPeriod: flushPeriod,
 		stopChan:    make(chan struct{}),
@@ -40,39 +40,39 @@ func NewStorage(flushPath string, flushPeriod time.Duration) Storage {
 	return s
 }
 
-func (s *storage) Set(key string, value interface{}) {
+func (s *storage[T]) Set(key string, value T) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.data[key] = value
 }
 
-func (s *storage) Get(key string) (interface{}, bool) {
+func (s *storage[T]) Get(key string) (T, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	val, ok := s.data[key]
 	return val, ok
 }
 
-func (s *storage) Delete(key string) {
+func (s *storage[T]) Delete(key string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	delete(s.data, key)
 }
 
 // All returns a copy of the underlying map for read-only purposes
-func (s *storage) All() map[string]interface{} {
+func (s *storage[T]) All() map[string]T {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
 	// Create a shallow copy to avoid race conditions
-	copy := make(map[string]interface{}, len(s.data))
+	copy := make(map[string]T, len(s.data))
 	for k, v := range s.data {
 		copy[k] = v
 	}
 	return copy
 }
 
-func (s *storage) flushPeriodically() {
+func (s *storage[T]) flushPeriodically() {
 	ticker := time.NewTicker(s.flushPeriod)
 	defer ticker.Stop()
 
@@ -86,7 +86,7 @@ func (s *storage) flushPeriodically() {
 	}
 }
 
-func (s *storage) Flush() error {
+func (s *storage[T]) Flush() error {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -100,7 +100,7 @@ func (s *storage) Flush() error {
 	return encoder.Encode(s.data)
 }
 
-func (s *storage) loadFromDisk() error {
+func (s *storage[T]) loadFromDisk() error {
 	file, err := os.Open(s.flushPath)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -114,7 +114,7 @@ func (s *storage) loadFromDisk() error {
 	return decoder.Decode(&s.data)
 }
 
-func (s *storage) Close() error {
+func (s *storage[T]) Close() error {
 	close(s.stopChan)
 	return s.Flush()
 }
